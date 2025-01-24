@@ -1,0 +1,239 @@
+#include <iostream>
+#include <String.h>
+#include <vector>
+#include <sstream>
+#include <iomanip>
+#include "base64M.h"
+#define uchar unsigned char;
+const unsigned int h_256[8] = { 0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19 };
+const unsigned int k_256[64] = { 0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+   0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+   0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+   0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+   0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+   0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+   0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+   0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2 };
+class SHA2Exception : std::exception
+{
+	const char* what() const throw ()
+	{
+		return "Error:The size or length of inpution is over 2^61-8(2,305,843,009,213,693,944)KB";
+	}
+};
+
+unsigned long long reverseOrder(unsigned long long n)
+{
+	unsigned long long a = 0;
+	for (int i = 0; i < 64; i++)
+	{
+		a += n << i >> 64;
+	}
+	return a;
+}
+
+unsigned char circleRightMoveBit(unsigned char c, int n)
+{
+	int temp = n % 8;
+	return (c >> temp) | (c << 8 - temp);
+}
+
+unsigned int circleRightMoveBit(unsigned int i, int n)
+{
+	int temp = n % 32;
+	return (i >> temp) | (i << 32 - temp);
+}
+
+unsigned int tick4B(std::vector<unsigned char> str, int size,int n)
+{
+	return (unsigned int)(str[size - n * 4] << 24) + (str[size - n * 4 + 1] << 16) + (str[size - n * 4 + 2] << 8) + (str[size - n * 4 + 3]);
+}
+
+unsigned int function1(unsigned int e, unsigned int f, unsigned int g, unsigned int h, std::vector<unsigned char> block, int size, int n)
+{
+	unsigned int S1 = circleRightMoveBit(e, 6) ^ circleRightMoveBit(e, 11) ^ circleRightMoveBit(e, 25);//移动位数出错,原为
+	//printf("%0x\n", S1);
+	unsigned int ch = (e & f) ^ ((~e) & g);
+	unsigned int k = k_256[n];
+	unsigned int w = tick4B(block, size, (64 - n));
+	//printf("%0x\n", w);
+	return h + S1 + ch + k + w;
+}
+
+unsigned int function2(unsigned int a, unsigned int b, unsigned int c)
+{
+	unsigned int S0 = circleRightMoveBit(a, 2) ^ circleRightMoveBit(a, 13) ^ circleRightMoveBit(a, 22);
+	unsigned int maj = (a & b) ^ (a & c) ^ (b & c);
+	return S0 + maj;
+}
+
+std::string SHA256(std::string str)
+{
+	try 
+	{
+		//将字符串转为数组方便后续处理
+		std::vector<unsigned char> tempStr;
+		for (int i = 0; i < str.size(); i++)
+		{
+			if (str[i] != '\0')
+			{
+				tempStr.push_back(str[i]);
+			}
+		}
+
+		//补位操作
+		//   判断补位终点
+		unsigned long long top = 64;//0x40  64  0100_0000
+		unsigned long long size = str.size();
+		while ((long long)(top - size) <= 4)
+		{
+			if (top == 0x8000000000000000)//2^64
+			{
+				throw SHA2Exception();
+			}
+			top += (unsigned long long)64;
+		}
+		//  补充空位
+		tempStr.push_back((unsigned char)(0x80));
+		while (tempStr.size() % 64 != 56)
+		{
+			tempStr.push_back((unsigned char)(0x00));
+		}
+		//   末尾补上消息长度(字节数)
+		//   补位上表示大小的8B/64b
+		/*for (int j = 0; j < tempStr.size(); j++)
+		{
+			printf("%02x ", tempStr[j]);
+			if (j % 4 == 3)
+			{
+				printf("|");
+			}
+			if (j % 16 == 15)
+			{
+				printf("\n");
+			}
+		}
+		printf("\n");*/
+
+		for (int i = 0; i < 8; i++)
+		{
+			tempStr.push_back((unsigned long long)size * 8 << i * 8 >> 56);
+		}
+
+		/*for (int j = 0; j < tempStr.size(); j++)
+		{
+			printf("%02x ", tempStr[j]);
+			if (j % 4 == 3)
+			{
+				printf("|");
+			}
+			if (j % 16 == 15)
+			{
+				printf("\n");
+			}
+		}
+		printf("\n");*/
+		//摘要操作(正式循环)
+		unsigned int tempN[9]= { h_256[0], h_256[1], h_256[2], h_256[3], h_256[4], h_256[5], h_256[6], h_256[7] ,0};//最后为替换位
+		unsigned int tempH[8] = { h_256[0], h_256[1], h_256[2], h_256[3], h_256[4], h_256[5], h_256[6], h_256[7]};
+		std::vector<unsigned char> tempBlockStr;//计算区块
+		for (int i = 0; i <= top; i += 64)//取64B/512b
+		{
+			//std::cout << i << std::endl;
+			//取其中64字节为区块
+			if (i == tempStr.size())
+			{
+				break;
+			}
+			for (int i0 = 0; i0 < 64; i0++)
+			{
+				//std::cout << i0 << std::endl;
+				tempBlockStr.push_back(tempStr[i+i0]);
+			}
+			//将64字节区块扩充至256字节(4*4=>16*4)
+			while (tempBlockStr.size() < 256)
+			{
+				//std::cout << tempBlockStr.size() << std::endl;
+				unsigned int s0 = tick4B(tempBlockStr, tempBlockStr.size(), 15);
+				unsigned int s1 = tick4B(tempBlockStr, tempBlockStr.size(), 2);
+				unsigned int s2 = tick4B(tempBlockStr, tempBlockStr.size(), 16);
+				unsigned int s3 = tick4B(tempBlockStr, tempBlockStr.size(), 7);
+
+				s0 = circleRightMoveBit(s0, 7) ^ circleRightMoveBit(s0, 18) ^ (s0 >> 3);
+				s1 = circleRightMoveBit(s1, 17) ^ circleRightMoveBit(s1, 19) ^ (s1 >> 10);
+
+				unsigned int append = s0 + s1 + s2 + s3;
+				for (int i0 = 0; i0 < 4; i0++)
+				{
+					//printf("%0x\n", (append << i0 * 8 >> 24));
+					tempBlockStr.push_back((unsigned char)(append << i0 * 8 >> 24));
+				}
+			}
+
+			//for (int j = 0; j < tempBlockStr.size(); j++)
+			//{
+			//	printf("%02x ", tempBlockStr[j]);
+			//	if (j % 4 == 3)
+			//	{
+			//		printf("|");
+			//	}
+			//	if (j % 16 == 15)
+			//	{
+			//		printf("\n");
+			//	}
+			//}
+
+			//循环64次计算
+			for (int i0 = 0; i0 < 64; i0++)
+			{
+				unsigned int T1 = function1(tempN[4], tempN[5], tempN[6], tempN[7], tempBlockStr, tempBlockStr.size(), i0);
+				unsigned int T2 = function2(tempN[0], tempN[1], tempN[2]);
+				tempN[3] += T1;
+				tempN[7] = T1 + T2;
+				//std::cout << i0 << std::endl;
+				//交换值 数组循环右移
+				for (int j = 8; j > 0; j--)
+				{
+					//std::cout << j << std::endl;
+					tempN[j] = tempN[j - 1];
+				}
+				tempN[0] = tempN[8];
+
+				//for (int j = 0; j < 8; j++)
+				//{
+				//	printf("%08x|", tempN[j]);
+				//}
+				//printf("\n");
+			}
+
+			for (int i1 = 0; i1 < 8; i1++)
+			{
+				tempH[i1] += tempN[i1];
+				tempN[i1] = tempH[i1];
+			}
+			tempBlockStr.clear();
+			//for (int j = 0; j < 8; j++)
+			//{
+			//	printf("%08x|", tempH[j]);
+			//}
+			//printf("\n");
+			
+		}
+		
+		//输出结果(将tempH的字节串联)
+		std::string finalStr;
+		for (int i = 0; i < 8; i++)
+		{
+			std::stringstream s;
+			s << std::hex << std::setw(8) << std::setfill('0') << tempH[i];
+			finalStr = finalStr + s.str();
+		}
+		return finalStr;
+
+	}
+	catch (std::exception& e)
+	{
+		std::cout << e.what() << std::endl;
+	}
+}
+
